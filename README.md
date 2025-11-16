@@ -1,1 +1,1 @@
-# pomodoro-cli
+# pomodoro-tui
