@@ -292,7 +292,7 @@ fn ui(f: &mut Frame, app: &App) {
         .split(size);
 
     // Tabs
-    let titles = vec![" [1] Timer ", " [2] Settings "];
+    let titles = vec![" Timer ", " Settings "];
     let tab_style = match app.current_tab {
         AppTab::Timer => app.phase.color(),
         AppTab::Settings => Color::Cyan,
@@ -371,8 +371,15 @@ fn draw_timer_tab(f: &mut Frame, app: &App, area: Rect) {
         .build();
 
     // Center big text horizontally
-    let centered_timer = centered_rect(60, 100, layout[1]);
-    f.render_widget(big_text, centered_timer);
+    let timer_layout = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Fill(1),    // Spacer left
+            Constraint::Length(46), // Width for 00:00
+            Constraint::Fill(1),    // Spacer right
+        ])
+        .split(layout[1]);
+    f.render_widget(big_text, timer_layout[1]);
 
     // Progress Bar
     let total = app.get_target_duration().as_secs_f64();
