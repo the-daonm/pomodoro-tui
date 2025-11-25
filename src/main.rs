@@ -7,207 +7,474 @@ use notify_rust::Notification;
 use ratatui::{
     Frame, Terminal,
     backend::CrosstermBackend,
-    layout::{Constraint, Direction, Layout},
-    style::{Color, Style},
-    widgets::{Block, Borders, Gauge, Paragraph},
+    layout::{Alignment, Constraint, Direction, Layout, Rect},
+    style::{Color, Modifier, Style},
+    widgets::{Block, Borders, Gauge, Paragraph, Tabs},
 };
 use std::{
     io,
     time::{Duration, Instant},
 };
+use tui_big_text::{BigText, PixelSize};
 
-#[derive(Clone, Copy, PartialEq)]
+// --- Enums for State Management ---
+
+#[derive(Clone, Copy, PartialEq, Debug)]
 enum Phase {
     Focus,
-    Break,
+    ShortBreak,
+    LongBreak,
 }
 
 impl Phase {
     fn name(&self) -> &'static str {
         match self {
-            Phase::Focus => "FOCUS",
-            Phase::Break => "BREAK",
+            Phase::Focus => "FOCUS SESSION",
+            Phase::ShortBreak => "SHORT BREAK",
+            Phase::LongBreak => "LONG BREAK",
+        }
+    }
+
+    fn color(&self) -> Color {
+        match self {
+            Phase::Focus => Color::Red,
+            Phase::ShortBreak => Color::Green,
+            Phase::LongBreak => Color::Blue,
         }
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum AppTab {
+    Timer,
+    Settings,
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum SettingSelection {
+    FocusTime,
+    ShortBreakTime,
+    LongBreakTime,
+}
+
+// --- Main Application Struct ---
+
 struct App {
+    // Navigation
+    current_tab: AppTab,
+
+    // Timer State
     phase: Phase,
-    focus_minutes: u64,
-    break_minutes: u64,
     running: bool,
     start_time: Instant,
-    paused_time: Duration,
+    paused_duration: Duration, // Accumulated time passed before pause
+
+    // Configuration (stored in minutes)
+    cfg_focus: u64,
+    cfg_short: u64,
+    cfg_long: u64,
+
+    // Settings Selection
+    selected_setting: SettingSelection,
 }
 
 impl App {
     fn new() -> Self {
         Self {
+            current_tab: AppTab::Timer,
             phase: Phase::Focus,
-            focus_minutes: 25,
-            break_minutes: 5,
             running: false,
             start_time: Instant::now(),
-            paused_time: Duration::ZERO,
+            paused_duration: Duration::ZERO,
+            cfg_focus: 25,
+            cfg_short: 5,
+            cfg_long: 15,
+            selected_setting: SettingSelection::FocusTime,
         }
     }
 
-    fn phase_duration(&self) -> Duration {
-        match self.phase {
-            Phase::Focus => Duration::from_secs(self.focus_minutes * 60),
-            Phase::Break => Duration::from_secs(self.break_minutes * 60),
-        }
+    // --- Time Logic ---
+
+    fn get_target_duration(&self) -> Duration {
+        let mins = match self.phase {
+            Phase::Focus => self.cfg_focus,
+            Phase::ShortBreak => self.cfg_short,
+            Phase::LongBreak => self.cfg_long,
+        };
+        Duration::from_secs(mins * 60)
     }
 
-    fn elapsed(&self) -> Duration {
+    fn get_elapsed(&self) -> Duration {
         if self.running {
-            self.paused_time + self.start_time.elapsed()
+            self.paused_duration + self.start_time.elapsed()
         } else {
-            self.paused_time
+            self.paused_duration
         }
     }
 
-    fn remaining(&self) -> Duration {
-        let total = self.phase_duration();
-        total.saturating_sub(self.elapsed())
+    fn get_remaining(&self) -> Duration {
+        let target = self.get_target_duration();
+        target.saturating_sub(self.get_elapsed())
     }
 
-    fn toggle(&mut self) {
+    fn toggle_timer(&mut self) {
         if self.running {
-            // pause
-            self.paused_time = self.elapsed();
+            // Pause
+            self.paused_duration += self.start_time.elapsed();
             self.running = false;
         } else {
-            // resume
+            // Resume
             self.start_time = Instant::now();
             self.running = true;
         }
     }
 
-    fn next_phase(&mut self) {
-        // switch phase
-        self.phase = match self.phase {
-            Phase::Focus => Phase::Break,
-            Phase::Break => Phase::Focus,
-        };
-
-        // reset timer
+    fn reset_timer(&mut self) {
         self.running = false;
-        self.paused_time = Duration::ZERO;
+        self.paused_duration = Duration::ZERO;
         self.start_time = Instant::now();
+    }
 
-        // notify user that next phase starts
-        send_notification(
-            &format!("Starting {}", self.phase.name()),
-            "Pomodoro TUI started your next session.",
-        );
+    fn next_phase(&mut self) {
+        self.phase = match self.phase {
+            Phase::Focus => Phase::ShortBreak,
+            Phase::ShortBreak => Phase::Focus, // Simple toggle for now, could be smarter
+            Phase::LongBreak => Phase::Focus,
+        };
+        self.reset_timer();
+        self.notify("Phase Changed", &format!("Starting {}", self.phase.name()));
+    }
+
+    fn notify(&self, title: &str, body: &str) {
+        let _ = Notification::new().summary(title).body(body).show();
+    }
+
+    // --- Configuration Logic ---
+
+    fn next_setting(&mut self) {
+        self.selected_setting = match self.selected_setting {
+            SettingSelection::FocusTime => SettingSelection::ShortBreakTime,
+            SettingSelection::ShortBreakTime => SettingSelection::LongBreakTime,
+            SettingSelection::LongBreakTime => SettingSelection::FocusTime,
+        };
+    }
+
+    fn prev_setting(&mut self) {
+        self.selected_setting = match self.selected_setting {
+            SettingSelection::FocusTime => SettingSelection::LongBreakTime,
+            SettingSelection::ShortBreakTime => SettingSelection::FocusTime,
+            SettingSelection::LongBreakTime => SettingSelection::ShortBreakTime,
+        };
+    }
+
+    fn adjust_setting(&mut self, delta: i64) {
+        match self.selected_setting {
+            SettingSelection::FocusTime => {
+                self.cfg_focus = (self.cfg_focus as i64 + delta).max(1).min(120) as u64;
+            }
+            SettingSelection::ShortBreakTime => {
+                self.cfg_short = (self.cfg_short as i64 + delta).max(1).min(60) as u64;
+            }
+            SettingSelection::LongBreakTime => {
+                self.cfg_long = (self.cfg_long as i64 + delta).max(1).min(60) as u64;
+            }
+        }
+        // If we adjust the time of the *current* phase, we should reset the timer to reflect it
+        // otherwise math gets weird
+        self.reset_timer();
     }
 }
 
 fn main() -> Result<(), io::Error> {
+    // Setup Terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen)?;
-
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
+    // App Loop
     let mut app = App::new();
+    let res = run_app(&mut terminal, &mut app);
 
-    loop {
-        terminal.draw(|f| ui(f, &app))?;
-
-        if event::poll(Duration::from_millis(100))? {
-            if let Event::Key(k) = event::read()? {
-                match k.code {
-                    KeyCode::Char('q') => break,
-                    KeyCode::Char(' ') => app.toggle(),
-                    KeyCode::Char('n') => app.next_phase(),
-                    _ => {}
-                }
-            }
-        }
-
-        // if timer done, auto stop, send notification and wait for user to press "n"
-        if app.remaining().as_secs() == 0 && app.running {
-            app.toggle(); // auto pause
-
-            send_notification(
-                &format!("{} session finished", app.phase.name()),
-                "Press N to go to the next phase.",
-            );
-        }
-    }
-
+    // Restore Terminal
     disable_raw_mode()?;
     execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
     terminal.show_cursor()?;
 
+    if let Err(err) = res {
+        println!("{:?}", err);
+    }
+
     Ok(())
 }
 
-/// small helper: fire a desktop notification; ignore errors if daemon missing
-fn send_notification(title: &str, body: &str) {
-    let _ = Notification::new().summary(title).body(body).show();
+fn run_app<B: ratatui::backend::Backend>(
+    terminal: &mut Terminal<B>,
+    app: &mut App,
+) -> io::Result<()> {
+    loop {
+        terminal.draw(|f| ui(f, app))?;
+
+        // Check for Auto-Complete
+        if app.running && app.get_remaining().is_zero() {
+            app.running = false;
+            app.notify("Timer Finished!", "Time to switch phases.");
+        }
+
+        // Handle Inputs
+        if event::poll(Duration::from_millis(250))? {
+            if let Event::Key(key) = event::read()? {
+                // Global Keys
+                match key.code {
+                    KeyCode::Char('q') => return Ok(()),
+                    KeyCode::Tab => {
+                        app.current_tab = match app.current_tab {
+                            AppTab::Timer => AppTab::Settings,
+                            AppTab::Settings => AppTab::Timer,
+                        }
+                    }
+                    _ => {}
+                }
+
+                // Context Keys
+                match app.current_tab {
+                    AppTab::Timer => match key.code {
+                        KeyCode::Char(' ') => app.toggle_timer(),
+                        KeyCode::Char('n') => app.next_phase(),
+                        KeyCode::Char('r') => app.reset_timer(),
+                        KeyCode::Char('1') => {
+                            app.phase = Phase::Focus;
+                            app.reset_timer();
+                        }
+                        KeyCode::Char('2') => {
+                            app.phase = Phase::ShortBreak;
+                            app.reset_timer();
+                        }
+                        KeyCode::Char('3') => {
+                            app.phase = Phase::LongBreak;
+                            app.reset_timer();
+                        }
+                        _ => {}
+                    },
+                    AppTab::Settings => match key.code {
+                        KeyCode::Up | KeyCode::Char('k') => app.prev_setting(),
+                        KeyCode::Down | KeyCode::Char('j') => app.next_setting(),
+                        KeyCode::Left | KeyCode::Char('h') => app.adjust_setting(-1),
+                        KeyCode::Right | KeyCode::Char('l') => app.adjust_setting(1),
+                        _ => {}
+                    },
+                }
+            }
+        }
+    }
 }
 
+// --- UI Rendering ---
+
 fn ui(f: &mut Frame, app: &App) {
-    let size = f.size();
+    let size = f.area();
+    // Main Container
+    let main_block = Block::default()
+        .borders(Borders::ALL)
+        .style(Style::default().bg(Color::Black));
+    f.render_widget(main_block, size);
 
-    // Outer frame
-    let outer = Block::default().borders(Borders::ALL).title(" Pomodoro ");
-    let inner = outer.inner(size);
-
-    // Draw outer block first
-    f.render_widget(outer, size);
-
-    // Split the *inside* of the block into rows
+    // Layout: Tabs at top, Content in middle, Help at bottom
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints(
-            [
-                Constraint::Length(2), // phase + status
-                Constraint::Length(2), // time
-                Constraint::Length(3), // progress bar
-                Constraint::Min(0),    // spacer
-                Constraint::Length(1), // controls
-            ]
-            .as_ref(),
-        )
-        .split(inner);
+        .constraints([
+            Constraint::Length(3), // Tabs
+            Constraint::Min(0),    // Content
+            Constraint::Length(1), // Footer
+        ])
+        .margin(1) // padding inside main border
+        .split(size);
 
-    let total = app.phase_duration().as_secs_f64().max(1.0);
-    let remaining = app.remaining().as_secs_f64();
-    let mut progress = 1.0 - (remaining / total);
-    if !progress.is_finite() {
-        progress = 0.0;
-    }
-    progress = progress.clamp(0.0, 1.0);
+    // Tabs
+    let titles = vec![" [1] Timer ", " [2] Settings "];
+    let tab_style = match app.current_tab {
+        AppTab::Timer => app.phase.color(),
+        AppTab::Settings => Color::Cyan,
+    };
 
-    let mins = app.remaining().as_secs() / 60;
-    let secs = app.remaining().as_secs() % 60;
+    let tabs = Tabs::new(titles)
+        .block(Block::default().borders(Borders::BOTTOM))
+        .select(match app.current_tab {
+            AppTab::Timer => 0,
+            _ => 1,
+        })
+        .highlight_style(Style::default().fg(tab_style).add_modifier(Modifier::BOLD));
+    f.render_widget(tabs, chunks[0]);
 
-    // Phase + running/paused
+    // Content
+    match app.current_tab {
+        AppTab::Timer => draw_timer_tab(f, app, chunks[1]),
+        AppTab::Settings => draw_settings_tab(f, app, chunks[1]),
+    };
+
+    // Footer
+    let footer_text = match app.current_tab {
+        AppTab::Timer => {
+            "Controls: [Space] Toggle | [R] Reset | [N] Next Phase | [Tab] Settings | [Q] Quit"
+        }
+        AppTab::Settings => {
+            "Controls: [Up/Down] Select | [Left/Right] Adjust | [Tab] Back to Timer"
+        }
+    };
+    let footer = Paragraph::new(footer_text)
+        .style(Style::default().fg(Color::DarkGray))
+        .alignment(Alignment::Center);
+    f.render_widget(footer, chunks[2]);
+}
+
+fn draw_timer_tab(f: &mut Frame, app: &App, area: Rect) {
+    let layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(2), // Spacer
+            Constraint::Length(8), // Big Timer
+            Constraint::Length(2), // Spacer
+            Constraint::Length(3), // Gauge
+            Constraint::Min(0),    // Spacer
+        ])
+        .split(area);
+
+    // Phase Status
+    let phase_color = app.phase.color();
     let status = if app.running { "RUNNING" } else { "PAUSED" };
-    let phase_text = format!("Phase: {}  [{}]", app.phase.name(), status);
-    let phase = Paragraph::new(phase_text).style(Style::default().fg(Color::Yellow));
-    f.render_widget(phase, chunks[0]);
 
-    // Time
-    let time = Paragraph::new(format!("Time: {:02}:{:02}", mins, secs))
-        .style(Style::default().fg(Color::Cyan));
-    f.render_widget(time, chunks[1]);
+    let info_text = format!("{}  --  {}", app.phase.name(), status);
+    let info = Paragraph::new(info_text)
+        .style(
+            Style::default()
+                .fg(phase_color)
+                .add_modifier(Modifier::BOLD),
+        )
+        .alignment(Alignment::Center);
+    f.render_widget(info, layout[0]);
 
-    // Progress bar
+    // Big Timer
+    let remaining = app.get_remaining();
+    let mins = remaining.as_secs() / 60;
+    let secs = remaining.as_secs() % 60;
+    let time_str = format!("{:02}:{:02}", mins, secs);
+
+    let big_text = BigText::builder()
+        .pixel_size(PixelSize::Full)
+        .style(Style::default().fg(if app.running {
+            phase_color
+        } else {
+            Color::White
+        }))
+        .lines(vec![time_str.into()])
+        .build();
+
+    // Center big text horizontally
+    let centered_timer = centered_rect(60, 100, layout[1]);
+    f.render_widget(big_text, centered_timer);
+
+    // Progress Bar
+    let total = app.get_target_duration().as_secs_f64();
+    let current = remaining.as_secs_f64();
+    let ratio = (current / total).clamp(0.0, 1.0); // Remaining ratio
+
     let gauge = Gauge::default()
-        .block(Block::default().borders(Borders::ALL).title(" Progress "))
-        .gauge_style(Style::default().fg(Color::Green))
-        .label(format!("{:>3}%", (progress * 100.0).round() as u64))
-        .ratio(progress);
-    f.render_widget(gauge, chunks[2]);
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" Time Remaining "),
+        )
+        .gauge_style(Style::default().fg(phase_color))
+        .ratio(ratio)
+        .label(format!("{:.0}%", ratio * 100.0));
 
-    // Controls
-    let help = Paragraph::new("Controls: [Space] Start/Stop  [N] Next Phase  [Q] Quit")
-        .style(Style::default().fg(Color::DarkGray));
-    f.render_widget(help, chunks[4]);
+    let centered_gauge = centered_rect(80, 100, layout[3]);
+    f.render_widget(gauge, centered_gauge);
+}
+
+fn draw_settings_tab(f: &mut Frame, app: &App, area: Rect) {
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Configuration ")
+        .style(Style::default().fg(Color::Cyan));
+
+    let inner_area = block.inner(area);
+    f.render_widget(block, area);
+
+    let layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3),
+            Constraint::Length(3),
+            Constraint::Length(3),
+            Constraint::Min(0),
+        ])
+        .margin(2)
+        .split(inner_area);
+
+    // Helper to render a setting row
+    let render_setting =
+        |f: &mut Frame, label: &str, value: u64, selection: SettingSelection, index: usize| {
+            let is_selected = app.selected_setting == selection;
+
+            let style = if is_selected {
+                Style::default()
+                    .fg(Color::Yellow)
+                    .bg(Color::DarkGray)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(Color::White)
+            };
+
+            let text = format!(" {}   < {:02} min > ", label, value);
+            let p = Paragraph::new(text)
+                .block(Block::default().borders(Borders::BOTTOM))
+                .style(style)
+                .alignment(Alignment::Center);
+            f.render_widget(p, layout[index]);
+        };
+
+    render_setting(
+        f,
+        "Focus Duration",
+        app.cfg_focus,
+        SettingSelection::FocusTime,
+        0,
+    );
+    render_setting(
+        f,
+        "Short Break Duration",
+        app.cfg_short,
+        SettingSelection::ShortBreakTime,
+        1,
+    );
+    render_setting(
+        f,
+        "Long Break Duration",
+        app.cfg_long,
+        SettingSelection::LongBreakTime,
+        2,
+    );
+}
+
+// Helper to center a rect
+fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
+    let popup_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage((100 - percent_y) / 2),
+            Constraint::Percentage(percent_y),
+            Constraint::Percentage((100 - percent_y) / 2),
+        ])
+        .split(r);
+
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage((100 - percent_x) / 2),
+            Constraint::Percentage(percent_x),
+            Constraint::Percentage((100 - percent_x) / 2),
+        ])
+        .split(popup_layout[1])[1]
 }
