@@ -260,8 +260,8 @@ fn run_app<B: ratatui::backend::Backend>(
                     AppTab::Settings => match key.code {
                         KeyCode::Up | KeyCode::Char('k') => app.prev_setting(),
                         KeyCode::Down | KeyCode::Char('j') => app.next_setting(),
-                        KeyCode::Left | KeyCode::Char('h') => app.adjust_setting(-1),
-                        KeyCode::Right | KeyCode::Char('l') => app.adjust_setting(1),
+                        KeyCode::Left | KeyCode::Char('h') => app.adjust_setting(-5),
+                        KeyCode::Right | KeyCode::Char('l') => app.adjust_setting(5),
                         _ => {}
                     },
                 }
@@ -284,7 +284,7 @@ fn ui(f: &mut Frame, app: &App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3), // Tabs
+            Constraint::Length(2), // Tabs
             Constraint::Min(0),    // Content
             Constraint::Length(1), // Footer
         ])
@@ -332,33 +332,50 @@ fn draw_timer_tab(f: &mut Frame, app: &App, area: Rect) {
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(2), // Spacer
-            Constraint::Length(8), // Big Timer
-            Constraint::Length(2), // Spacer
-            Constraint::Length(3), // Gauge
-            Constraint::Min(0),    // Spacer
+            Constraint::Fill(1),   // Top Spring
+            Constraint::Length(1), // Phase Name (e.g., "FOCUS SESSION")
+            Constraint::Length(1), // Status (e.g., "RUNNING")
+            Constraint::Length(4), // Gap (Increased space)
+            Constraint::Length(8), // Big Timer Height
+            Constraint::Length(4), // Gap (Increased space)
+            Constraint::Length(3), // Gauge Height
+            Constraint::Fill(1),   // Bottom Spring
         ])
         .split(area);
 
-    // Phase Status
     let phase_color = app.phase.color();
-    let status = if app.running { "RUNNING" } else { "PAUSED" };
 
-    let info_text = format!("{}  --  {}", app.phase.name(), status);
-    let info = Paragraph::new(info_text)
+    // Phase Name
+    let phase_text = Paragraph::new(app.phase.name())
         .style(
             Style::default()
                 .fg(phase_color)
                 .add_modifier(Modifier::BOLD),
         )
         .alignment(Alignment::Center);
-    f.render_widget(info, layout[0]);
+    f.render_widget(phase_text, layout[1]);
+
+    // Status
+    let status_str = if app.running { "RUNNING" } else { "PAUSED" };
+    let status_text = Paragraph::new(format!("[ {} ]", status_str))
+        .style(Style::default().fg(Color::DarkGray))
+        .alignment(Alignment::Center);
+    f.render_widget(status_text, layout[2]);
 
     // Big Timer
     let remaining = app.get_remaining();
     let mins = remaining.as_secs() / 60;
     let secs = remaining.as_secs() % 60;
     let time_str = format!("{:02}:{:02}", mins, secs);
+
+    let timer_layout = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Fill(1),    // Spacer Left
+            Constraint::Length(39), // Fixed width for "00:00"
+            Constraint::Fill(1),    // Spacer Right
+        ])
+        .split(layout[4]);
 
     let big_text = BigText::builder()
         .pixel_size(PixelSize::Full)
@@ -370,21 +387,21 @@ fn draw_timer_tab(f: &mut Frame, app: &App, area: Rect) {
         .lines(vec![time_str.into()])
         .build();
 
-    // Center big text horizontally
-    let timer_layout = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Fill(1),    // Spacer left
-            Constraint::Length(46), // Width for 00:00
-            Constraint::Fill(1),    // Spacer right
-        ])
-        .split(layout[1]);
     f.render_widget(big_text, timer_layout[1]);
 
-    // Progress Bar
+    // Progress Gauge
+    let gauge_layout = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Fill(1),
+            Constraint::Percentage(80), // 80% width
+            Constraint::Fill(1),
+        ])
+        .split(layout[6]);
+
     let total = app.get_target_duration().as_secs_f64();
     let current = remaining.as_secs_f64();
-    let ratio = (current / total).clamp(0.0, 1.0); // Remaining ratio
+    let ratio = (current / total).clamp(0.0, 1.0);
 
     let gauge = Gauge::default()
         .block(
@@ -396,8 +413,7 @@ fn draw_timer_tab(f: &mut Frame, app: &App, area: Rect) {
         .ratio(ratio)
         .label(format!("{:.0}%", ratio * 100.0));
 
-    let centered_gauge = centered_rect(80, 100, layout[3]);
-    f.render_widget(gauge, centered_gauge);
+    f.render_widget(gauge, gauge_layout[1]);
 }
 
 fn draw_settings_tab(f: &mut Frame, app: &App, area: Rect) {
@@ -412,10 +428,12 @@ fn draw_settings_tab(f: &mut Frame, app: &App, area: Rect) {
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
+            Constraint::Fill(1),
             Constraint::Length(3),
             Constraint::Length(3),
             Constraint::Length(3),
             Constraint::Min(0),
+            Constraint::Fill(1),
         ])
         .margin(2)
         .split(inner_area);
@@ -447,41 +465,20 @@ fn draw_settings_tab(f: &mut Frame, app: &App, area: Rect) {
         "Focus Duration",
         app.cfg_focus,
         SettingSelection::FocusTime,
-        0,
+        1,
     );
     render_setting(
         f,
         "Short Break Duration",
         app.cfg_short,
         SettingSelection::ShortBreakTime,
-        1,
+        2,
     );
     render_setting(
         f,
         "Long Break Duration",
         app.cfg_long,
         SettingSelection::LongBreakTime,
-        2,
+        3,
     );
-}
-
-// Helper to center a rect
-fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
-    let popup_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage((100 - percent_y) / 2),
-            Constraint::Percentage(percent_y),
-            Constraint::Percentage((100 - percent_y) / 2),
-        ])
-        .split(r);
-
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage((100 - percent_x) / 2),
-            Constraint::Percentage(percent_x),
-            Constraint::Percentage((100 - percent_x) / 2),
-        ])
-        .split(popup_layout[1])[1]
 }
