@@ -1,4 +1,4 @@
-#🍅 TUI Pomodoro Timer
+# 🍅 TUI Pomodoro Timer
 
 > A minimalist, customizable, and scalable Pomodoro timer built in Rust using the ratatui (formerly tui-rs) and crossterm libraries.
 
