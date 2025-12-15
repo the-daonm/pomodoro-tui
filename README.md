@@ -22,8 +22,8 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 - Clone the repository:
 ```bash
-git clone [YOUR_REPO_URL]
-cd tui-pomodoro-timer
+git clone https://github.com/the-daonm/pomodoro-tui.git
+cd pomodoro-tui
 ```
 
 - Run the application:
@@ -74,4 +74,3 @@ This project is ready for growth! Feel free to contribute by opening issues or s
 - More User Feedback: Add a visual indicator (like a small checkmark) in the Timer tab to show when a Pomodoro cycle is complete.
 
 - Error Handling: Improve robustness with more graceful handling of I/O errors.
-
