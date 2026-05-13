@@ -1,6 +1,7 @@
 use notify_rust::Notification;
 use ratatui::style::Color;
 use std::time::{Duration, Instant};
+use rodio::{OutputStream, OutputStreamHandle, Sink, source::{SineWave, Source}};
 
 // --- Enums for State Management ---
 
@@ -65,10 +66,19 @@ pub struct App {
 
     // Settings Selection
     pub selected_setting: SettingSelection,
+
+    // Audio
+    pub _audio_stream: Option<OutputStream>,
+    pub audio_handle: Option<OutputStreamHandle>,
 }
 
 impl App {
     pub fn new() -> Self {
+        let (audio_stream, audio_handle) = match OutputStream::try_default() {
+            Ok((stream, handle)) => (Some(stream), Some(handle)),
+            Err(_) => (None, None),
+        };
+
         Self {
             current_tab: AppTab::Timer,
             phase: Phase::Focus,
@@ -83,6 +93,9 @@ impl App {
             cfg_short: 5,
             cfg_long: 15,
             selected_setting: SettingSelection::FocusTime,
+
+            _audio_stream: audio_stream,
+            audio_handle,
         }
     }
 
@@ -144,6 +157,29 @@ impl App {
         };
         self.reset_timer();
         self.notify("Phase Changed", &format!("Starting {}", self.phase.name()));
+        self.ring();
+    }
+
+    pub fn ring(&self) {
+        if let Some(handle) = &self.audio_handle {
+            if let Ok(sink) = Sink::try_new(handle) {
+                // A simple "ring" sound: two short beeps
+                let beep1 = SineWave::new(440.0)
+                    .amplify(0.10)
+                    .take_duration(Duration::from_millis(150));
+                let silence = SineWave::new(440.0)
+                    .amplify(0.0)
+                    .take_duration(Duration::from_millis(50));
+                let beep2 = SineWave::new(880.0)
+                    .amplify(0.10)
+                    .take_duration(Duration::from_millis(300));
+
+                sink.append(beep1);
+                sink.append(silence);
+                sink.append(beep2);
+                sink.detach(); // Let it play in the background
+            }
+        }
     }
 
     pub fn notify(&self, title: &str, body: &str) {
