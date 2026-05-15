@@ -41,6 +41,7 @@ pub enum SettingSelection {
     FocusTime,
     ShortBreakTime,
     LongBreakTime,
+    LongBreakInterval,
 }
 
 // --- Main Application Struct ---
@@ -192,15 +193,17 @@ impl App {
         self.selected_setting = match self.selected_setting {
             SettingSelection::FocusTime => SettingSelection::ShortBreakTime,
             SettingSelection::ShortBreakTime => SettingSelection::LongBreakTime,
-            SettingSelection::LongBreakTime => SettingSelection::FocusTime,
+            SettingSelection::LongBreakTime => SettingSelection::LongBreakInterval,
+            SettingSelection::LongBreakInterval => SettingSelection::FocusTime,
         };
     }
 
     pub fn prev_setting(&mut self) {
         self.selected_setting = match self.selected_setting {
-            SettingSelection::FocusTime => SettingSelection::LongBreakTime,
+            SettingSelection::FocusTime => SettingSelection::LongBreakInterval,
             SettingSelection::ShortBreakTime => SettingSelection::FocusTime,
             SettingSelection::LongBreakTime => SettingSelection::ShortBreakTime,
+            SettingSelection::LongBreakInterval => SettingSelection::LongBreakTime,
         };
     }
 
@@ -215,7 +218,61 @@ impl App {
             SettingSelection::LongBreakTime => {
                 self.cfg_long = (self.cfg_long as i64 + delta).max(1).min(60) as u64;
             }
+            SettingSelection::LongBreakInterval => {
+                // Use a smaller delta or handle differently?
+                // The current main.rs passes ±5. For interval, maybe we just use signum if it's large?
+                // Actually, let's just use the delta but normalize it to ±1 for the interval if we want,
+                // or just let it be ±5. But usually people want 2, 3, 4, 5.
+                // I'll adjust the logic to use delta.signum() if I want it to be 1 step,
+                // but let's see how main.rs calls it.
+                let step = if delta.abs() >= 5 { delta.signum() } else { delta };
+                self.long_break_interval = (self.long_break_interval as i64 + step).max(1).min(10) as u8;
+            }
         }
         self.reset_timer();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_long_break_interval_customization() {
+        let mut app = App::new();
+        
+        // Default is 4
+        assert_eq!(app.long_break_interval, 4);
+        
+        // Adjust to 2
+        app.selected_setting = SettingSelection::LongBreakInterval;
+        app.adjust_setting(-2);
+        assert_eq!(app.long_break_interval, 2);
+        
+        // Transition to Long Break after 2 focus sessions
+        app.phase = Phase::Focus;
+        app.pomodoro_count = 1;
+        app.next_phase(); // Completes 2nd focus session
+        assert_eq!(app.phase, Phase::LongBreak);
+        assert_eq!(app.pomodoro_count, 2);
+    }
+
+    #[test]
+    fn test_long_break_interval_limits() {
+        let mut app = App::new();
+        app.selected_setting = SettingSelection::LongBreakInterval;
+        
+        // Default is 4. Each call with -5 adjusts by -1.
+        app.adjust_setting(-5); // 3
+        app.adjust_setting(-5); // 2
+        app.adjust_setting(-5); // 1
+        app.adjust_setting(-5); // stays 1 (min)
+        assert_eq!(app.long_break_interval, 1);
+        
+        // Adjust up to max (10)
+        for _ in 0..15 {
+            app.adjust_setting(5);
+        }
+        assert_eq!(app.long_break_interval, 10);
     }
 }

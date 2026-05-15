@@ -58,7 +58,7 @@ pub fn ui(f: &mut Frame, app: &App) {
             "Controls: [Space] Toggle | [R] Reset | [N] Next Phase | [1/2/3] Set Phase | [Tab] Settings | [Q] Quit"
         }
         AppTab::Settings => {
-            "Controls: [Up/Down] Select | [Left/Right] Adjust (±5m) | [Tab] Back to Timer"
+            "Controls: [Up/Down] Select | [Left/Right] Adjust | [Tab] Back to Timer"
         }
     };
     let footer = Paragraph::new(footer_text)
@@ -182,6 +182,7 @@ fn draw_settings_tab(f: &mut Frame, app: &App, area: Rect) {
             Constraint::Length(3),
             Constraint::Length(3),
             Constraint::Length(3),
+            Constraint::Length(3),
             Constraint::Min(0),
             Constraint::Fill(1),
         ])
@@ -190,7 +191,7 @@ fn draw_settings_tab(f: &mut Frame, app: &App, area: Rect) {
 
     // Helper to render a setting row
     let render_setting =
-        |f: &mut Frame, label: &str, value: u64, selection: SettingSelection, index: usize| {
+        |f: &mut Frame, label: &str, value: String, selection: SettingSelection, index: usize| {
             let is_selected = app.selected_setting == selection;
 
             let style = if is_selected {
@@ -202,7 +203,7 @@ fn draw_settings_tab(f: &mut Frame, app: &App, area: Rect) {
                 Style::default().fg(Color::White)
             };
 
-            let text = format!(" {}   < {:02} min > ", label, value);
+            let text = format!(" {}   < {} > ", label, value);
             let p = Paragraph::new(text)
                 .block(Block::default().borders(Borders::BOTTOM))
                 .style(style)
@@ -213,22 +214,29 @@ fn draw_settings_tab(f: &mut Frame, app: &App, area: Rect) {
     render_setting(
         f,
         "Focus Duration",
-        app.cfg_focus,
+        format!("{:02} min", app.cfg_focus),
         SettingSelection::FocusTime,
         1,
     );
     render_setting(
         f,
         "Short Break Duration",
-        app.cfg_short,
+        format!("{:02} min", app.cfg_short),
         SettingSelection::ShortBreakTime,
         2,
     );
     render_setting(
         f,
         "Long Break Duration",
-        app.cfg_long,
+        format!("{:02} min", app.cfg_long),
         SettingSelection::LongBreakTime,
         3,
+    );
+    render_setting(
+        f,
+        "Long Break Interval",
+        format!("{} sessions", app.long_break_interval),
+        SettingSelection::LongBreakInterval,
+        4,
     );
 }
