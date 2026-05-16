@@ -23,9 +23,9 @@ impl Phase {
 
     pub fn color(&self) -> Color {
         match self {
-            Phase::Focus => Color::Red,
-            Phase::ShortBreak => Color::Green,
-            Phase::LongBreak => Color::Blue,
+            Phase::Focus => Color::LightRed,
+            Phase::ShortBreak => Color::LightGreen,
+            Phase::LongBreak => Color::LightBlue,
         }
     }
 }
@@ -60,6 +60,10 @@ pub struct App {
     pub pomodoro_count: u8, // Tracks completed focus sessions (0 to 3 before Long Break)
     pub long_break_interval: u8, // Define the interval for a long break (e.g., 4 sessions)
 
+    // Stats
+    pub total_focus_seconds: u64,
+    pub history: Vec<(String, u64)>, // (Phase Name, Duration in minutes)
+
     // Configuration (stored in minutes)
     pub cfg_focus: u64,
     pub cfg_short: u64,
@@ -89,6 +93,9 @@ impl App {
 
             pomodoro_count: 0,
             long_break_interval: 4,
+
+            total_focus_seconds: 0,
+            history: Vec::new(),
 
             cfg_focus: 25,
             cfg_short: 5,
@@ -127,7 +134,11 @@ impl App {
     pub fn toggle_timer(&mut self) {
         if self.running {
             // Pause
-            self.paused_duration += self.start_time.elapsed();
+            let elapsed = self.start_time.elapsed();
+            self.paused_duration += elapsed;
+            if self.phase == Phase::Focus {
+                self.total_focus_seconds += elapsed.as_secs();
+            }
             self.running = false;
         } else {
             // Resume
@@ -137,6 +148,9 @@ impl App {
     }
 
     pub fn reset_timer(&mut self) {
+        if self.running && self.phase == Phase::Focus {
+            self.total_focus_seconds += self.start_time.elapsed().as_secs();
+        }
         self.running = false;
         self.paused_duration = Duration::ZERO;
         self.start_time = Instant::now();
@@ -144,6 +158,26 @@ impl App {
 
     /// Core Pomodoro logic: Handles phase transition and updates the pomodoro count.
     pub fn next_phase(&mut self) {
+        // Record history before changing
+        let duration_mins = match self.phase {
+            Phase::Focus => self.cfg_focus,
+            Phase::ShortBreak => self.cfg_short,
+            Phase::LongBreak => self.cfg_long,
+        };
+        
+        // Add to total focus time if it was a focus session
+        if self.phase == Phase::Focus {
+            // If we are skipping/completing naturally, we might have some unrecorded time
+            if self.running {
+                self.total_focus_seconds += self.start_time.elapsed().as_secs();
+            }
+        }
+
+        self.history.push((self.phase.name().to_string(), duration_mins));
+        if self.history.len() > 10 {
+            self.history.remove(0);
+        }
+
         self.phase = match self.phase {
             Phase::Focus => {
                 self.pomodoro_count += 1;

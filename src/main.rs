@@ -68,19 +68,29 @@ fn run_app<B: ratatui::backend::Backend>(
                 match app.current_tab {
                     AppTab::Timer => match key.code {
                         KeyCode::Char(' ') => app.toggle_timer(),
-                        KeyCode::Char('n') => app.next_phase(),
+                        KeyCode::Char('n') => {
+                            if !app.running {
+                                app.next_phase();
+                            }
+                        }
                         KeyCode::Char('r') => app.reset_timer(),
                         KeyCode::Char('1') => {
-                            app.phase = Phase::Focus;
-                            app.reset_timer();
+                            if !app.running {
+                                app.phase = Phase::Focus;
+                                app.reset_timer();
+                            }
                         }
                         KeyCode::Char('2') => {
-                            app.phase = Phase::ShortBreak;
-                            app.reset_timer();
+                            if !app.running {
+                                app.phase = Phase::ShortBreak;
+                                app.reset_timer();
+                            }
                         }
                         KeyCode::Char('3') => {
-                            app.phase = Phase::LongBreak;
-                            app.reset_timer();
+                            if !app.running {
+                                app.phase = Phase::LongBreak;
+                                app.reset_timer();
+                            }
                         }
                         _ => {}
                     },
