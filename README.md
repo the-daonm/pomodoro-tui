@@ -1,70 +1,83 @@
-# TUI Pomodoro Timer
+# Pomodoro TUI
 
-> A minimalist, customizable, and scalable Pomodoro timer built in Rust using the ratatui (formerly tui-rs) and crossterm libraries.
+[![Rust](https://img.shields.io/badge/language-rust-orange.svg)](https://www.rust-lang.org)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## Features
+A sophisticated, minimalist Pomodoro timer for the terminal, engineered for focus and productivity. Built with Rust using `ratatui` and `crossterm`.
 
-- Customizable Sessions: Easily configure Focus, Short Break, and Long Break durations via a dedicated settings tab.
-- True Pomodoro Logic: Automatically transitions phases, including a configurable Long Break after a set number of Focus sessions (default 4).
-- Desktop Notifications: Uses notify-rust to send system notifications when a phase ends, allowing you to focus without staring at the terminal.
-- Scalable Architecture: Code is organized into three distinct modules (main.rs, app.rs, ui.rs) for clean separation of concerns and easy maintenance.
-- Responsive UI: Built with ratatui for a clean, modern Terminal User Interface.
+![Pomodoro TUI Screenshot](img.png)
 
-## Installation
+## Overview
+
+Pomodoro TUI provides a distraction-free environment for deep work. By leveraging a terminal-based interface, it minimizes system resource usage while offering a clean, responsive, and highly configurable experience.
+
+## Key Features
+
+*   **Intelligent Pomodoro Logic:** Seamlessly manages Focus, Short Break, and Long Break cycles with automatic transitions.
+*   **Customizable Sessions:** Fine-tune durations for every phase via an intuitive in-app settings interface.
+*   **System Notifications:** Integrated desktop notifications via `notify-rust` ensure you're alerted at phase transitions without needing to monitor the terminal.
+*   **Responsive Terminal UI:** A modern interface built on `ratatui`, designed for clarity and ease of use.
+*   **Modular Architecture:** Robustly engineered with a clear separation of concerns between application logic, state management, and UI rendering.
+
+## Getting Started
+
 ### Prerequisites
 
-You need the Rust toolchain installed. If you don't have it, you can install it via rustup:
+Ensure you have the Rust toolchain installed. If not, install it via [rustup](https://rustup.rs/):
+
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ```
 
-### Build and Run
+### Installation
 
-- Clone the repository:
-```bash
-git clone https://github.com/the-daonm/pomodoro-tui.git
-cd pomodoro-tui
-```
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/the-daonm/pomodoro-tui.git
+    cd pomodoro-tui
+    ```
 
-- Run the application:
-```bash
-cargo run
-```
+2.  **Build and Execute:**
+    ```bash
+    cargo run --release
+    ```
 
-Note: On Linux, ensure you have a notification server installed (like dunst or gnome-shell) for phase notifications to work.
+*Note: On Linux, a notification server (e.g., `dunst`, `mako`, or `gnome-shell`) is required for system alerts.*
 
-## Usage & Controls
+## Usage
 
-The application uses simple keyboard shortcuts to manage the timer and settings.
-| Key           | Context | Action                                               |
-|---------------|---------|------------------------------------------------------|
-| Space         | Timer   | Toggle (Start/Pause) the current session.            |
-| R             | Timer   | Reset the current timer and return to initial time.  |
-| N             | Timer   | Skip to the next phase (triggers full Pomodoro cycle logic). |
-| 1/2/3         | Timer   | Immediately set phase to Focus (1), Short Break (2), or Long Break (3). |
-| Tab           | Global  | Switch between Timer and Settings tabs.              |
-| Up/Down (K/J) | Settings| Select the configuration setting to change.          |
-| Left/Right (H/L)|Settings| Adjust the selected duration (default adjustment is ±5 minutes). |
-| Q             | Global  | Quit the application.                                |
+### Keyboard Shortcuts
 
-## Customization (Configuration)
+| Key | Context | Action |
+| :--- | :--- | :--- |
+| `Space` | Timer | Toggle Start/Pause |
+| `R` | Timer | Reset current session |
+| `N` | Timer | Skip to next phase |
+| `1` / `2` / `3` | Timer | Switch to Focus / Short Break / Long Break |
+| `Tab` | Global | Toggle between Timer and Settings |
+| `Up` / `Down` (`k`/`j`) | Settings | Navigate configuration options |
+| `Left` / `Right` (`h`/`l`) | Settings | Adjust durations (±5 minutes) |
+| `Q` | Global | Exit application |
 
-From the Settings tab, you can customize the following durations (in minutes):
-| Setting            | Default Value | Description                                                    |
-|--------------------|---------------|----------------------------------------------------------------|
-| Focus Duration     | 25            | Length of the work/focus session.                              |
-| Short Break Duration| 5             | Length of the short rest period.                               |
-| Long Break Duration| 15            | Length of the extended rest period (after 4 focus cycles).     |
+### Configuration
 
-## Contributing & Future Plans
+The Settings tab allows for real-time adjustments to your productivity workflow:
 
-This project is ready for growth! Feel free to contribute by opening issues or submitting pull requests.
-### Next Steps for Development:
+| Parameter | Default | Description |
+| :--- | :--- | :--- |
+| **Focus Duration** | 25m | Duration of intensive work sessions. |
+| **Short Break** | 5m | Brief rest period between sessions. |
+| **Long Break** | 15m | Extended rest after completing 4 focus cycles. |
 
-- Persistent Configuration: Implement saving and loading settings (Focus, Breaks, Long Break Interval) to a file (e.g., JSON or TOML).
+## Roadmap
 
-- Time Logging: Add a simple log file to track completed focus sessions and total time worked.
+Future enhancements focused on persistence and analytics:
 
-- More User Feedback: Add a visual indicator (like a small checkmark) in the Timer tab to show when a Pomodoro cycle is complete.
+*   [ ] **Persistent Configuration:** Support for `.toml` or `.json` config files.
+*   [ ] **Analytics Engine:** Session logging and work-time visualization.
+*   [ ] **Visual Feedback:** Enhanced progress indicators for Pomodoro cycles.
+*   [ ] **Extended Customization:** Theme support and configurable hotkeys.
 
-- Error Handling: Improve robustness with more graceful handling of I/O errors.
+## License
+
+Distributed under the MIT License. See `LICENSE` for more information.
